@@ -32,10 +32,12 @@ jobs:
         with:
           node-version-file: '.nvmrc'
       - name: Bump version
+        id: version-details
         run: |
           FOLDERS='${{ inputs.package-folders }}'
           echo "Bumping version in folders:"
           echo "$FOLDERS"
+          VERSION_PATH="."
           
           # Loop through each line (folder)
           echo "$FOLDERS" | while IFS= read -r folder; do
@@ -50,14 +52,20 @@ jobs:
               cd "$folder"
               npm version --commit-hooks false --git-tag-version false ${{ inputs.version }}
               cd -
+              VERSION_PATH="$folder"
             fi
           done
+
+          echo "Using version from path: '$VERSION_PATH'"
+          echo "version-folder=$VERSION_PATH" >> $GITHUB_OUTPUT
       - name: Update changelog
         run: |
           npx auto-changelog --unreleased-only
       - name: Get version
         id: package-version
         uses: martinbeentjes/npm-get-version-action@3cf273023a0dda27efcd3164bdfb51908dd46a5b # v1.3.1
+        with:
+          path: ${{ steps.version-details.outputs.version-folder }}
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7.0.11
         with:
