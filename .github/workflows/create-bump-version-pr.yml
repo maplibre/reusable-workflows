@@ -123,6 +123,7 @@ jobs:
 
           // Check which PR numbers are missing from changelog
           const missingPrNumbers = prNumbers.filter(prNum => !changelog.includes(`#${prNum}`));
+          const missingEntries = [];
           
           if (missingPrNumbers.length === 0) {
             console.log('All PRs are already in the changelog');
@@ -141,7 +142,6 @@ jobs:
             }
 
             // Fetch PR details using gh CLI only for missing PRs
-            const missingEntries = [];
             for (const prNumber of missingPrNumbers) {
               try {
                 const prJson = execSync(`gh pr view ${prNumber} --json title,author,number`, { encoding: 'utf8' });
@@ -161,35 +161,25 @@ jobs:
                 console.log(`Could not fetch details for PR #${prNumber}: ${error.message}`);
               }
             }
-            
-            if (missingEntries.length > 0) {
-              console.log(`Adding ${missingEntries.length} missing PR entries to changelog`);
-              
-              // Find the placeholder section and add missing entries
-              const featurePlaceholder = '- _...Add new stuff here..._';
-              if (changelog.includes(featurePlaceholder)) {
-                // Add entries after the features placeholder
-                const entriesText = missingEntries.join('\n');
-                changelog = changelog.replace(
-                  featurePlaceholder,
-                  `${featurePlaceholder}\n${entriesText}`
-                );
-              } else {
-                console.log('Warning: Could not find placeholder to insert PR entries');
-              }
-            }
           }
           
           changelog = changelog.replace('## main', `## ${newVersion}`);
           changelog = changelog.replaceAll('- _...Add new stuff here..._\n', '');
-          changelog = `## main
+          changelogHeader = `## main
           ### ✨ Features and improvements
           - _...Add new stuff here..._
           
           ### 🐞 Bug fixes
           - _...Add new stuff here..._
           
-          ` + changelog;
+          `;
+          if (missingEntries.length > 0) {
+            console.log(`Adding ${missingEntries.length} missing PR entries to changelog`);
+            const entriesText = missingEntries.join('\n');
+            changelogHeader += entriesText + '\n'
+          }
+          
+          changelog = changelogHeader + changelog;
           fs.writeFileSync(changelogPath, changelog, 'utf8');
           console.log(`Changelog updated at ${changelogPath}`);
 
