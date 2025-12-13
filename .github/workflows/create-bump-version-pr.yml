@@ -165,7 +165,7 @@ jobs:
           
           changelog = changelog.replace('## main', `## ${newVersion}`);
           changelog = changelog.replaceAll('- _...Add new stuff here..._\n', '');
-          changelogHeader = `## main
+          let changelogHeader = `## main
           ### ✨ Features and improvements
           - _...Add new stuff here..._
           
