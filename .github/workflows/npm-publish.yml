@@ -85,7 +85,7 @@ jobs:
           echo "release_type=$RELEASE_TYPE" >> $GITHUB_OUTPUT
 
       - name: Build
-        run: ${{ github.event.inputs.build-command }}
+        run: ${{ inputs.build-command }}
 
       - name: Publish NPM package (regular)
         if: ${{ steps.prepare_release.outputs.release_type == 'regular' }}
@@ -149,13 +149,13 @@ jobs:
           prerelease: ${{ steps.prepare_release.outputs.release_type == 'prerelease' }}
 
       - name: Build the Docs
-        run: ${{ github.event.inputs.docs-command }}
+        run: ${{ inputs.docs-command }}
 
       - name: Publish the docs
         if: ${{ steps.prepare_release.outputs.release_type == 'regular' }}
         uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e # v4.0.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ${{ github.event.inputs.docs-output-dir }}
-          destination_dir: ${{ github.event.inputs.docs-gh-pages-dir }}
+          publish_dir: ${{ inputs.docs-output-dir }}
+          destination_dir: ${{ inputs.docs-gh-pages-dir }}
           commit_message: 'deploy docs: ${{ steps.tag_version.outputs.new_tag }}'
