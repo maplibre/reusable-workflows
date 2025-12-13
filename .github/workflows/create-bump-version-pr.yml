@@ -15,6 +15,11 @@ on:
         required: false
         type: string
         default: '.'
+      changelog-path:
+        description: Path to the changelog file. Defaults to CHANGELOG.md
+        required: false
+        type: string
+        default: 'CHANGELOG.md'
 jobs:
   bump-version-pr:
     name: Bump version PR
@@ -31,44 +36,173 @@ jobs:
         uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v4
         with:
           node-version-file: '.nvmrc'
-      - name: Bump version
+      - name: Create bump script
+        run: |
+          cat > bump-version.mjs << 'EOF'
+          import { execSync } from 'child_process';
+          import * as fs from 'fs';
+          import * as path from 'path';
+
+          const versionType = process.argv[2];
+          const folders = process.argv[3];
+          const changelogPath = process.argv[4] || 'CHANGELOG.md';
+
+          console.log('Bumping version in folders:');
+          console.log(folders);
+
+          const folderList = folders.split('\n').map(f => f.trim()).filter(f => f);
+          let versionPath = '.';
+          let newVersion = '';
+
+          for (const folder of folderList) {
+            if (folder === '.') {
+              console.log('Bumping version in root package.json');
+              execSync(`npm version --commit-hooks false --git-tag-version false ${versionType}`, {
+                stdio: 'inherit'
+              });
+            } else {
+              console.log(`Bumping version in ${folder}/package.json`);
+              execSync(`npm version --commit-hooks false --git-tag-version false ${versionType}`, {
+                cwd: folder,
+                stdio: 'inherit'
+              });
+            }
+            versionPath = folder;
+          }
+
+          // Get the new version
+          const packageJsonPath = path.join(versionPath, 'package.json');
+          const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+          newVersion = packageJson.version;
+
+          console.log(`Using version from path: '${versionPath}'`);
+          console.log(`New version: ${newVersion}`);
+
+          // Update changelog
+          console.log(`Checking for changelog at: ${changelogPath}`);
+          if (!fs.existsSync(changelogPath)) {
+            console.log(`No changelog found at ${changelogPath}, skipping changelog update`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${newVersion}\n`);
+            process.exit(0);
+          }
+
+          let changelog = fs.readFileSync(changelogPath, 'utf8');
+
+          // Get PRs since last tag
+          console.log('Fetching PRs since last tagged version...');
+          let latestTag;
+          try {
+            latestTag = execSync('git describe --tags --abbrev=0', { encoding: 'utf8' }).trim();
+            console.log(`Latest tag: ${latestTag}`);
+          } catch (error) {
+            console.log('No previous tags found, using all commits');
+            latestTag = '';
+          }
+
+          // Get commit range
+          const commitRange = latestTag ? `${latestTag}..HEAD` : 'HEAD';
+          
+          // Get all PR numbers from commit messages
+          let commits;
+          try {
+            commits = execSync(`git log ${commitRange} --oneline`, { encoding: 'utf8' });
+          } catch (error) {
+            console.log('No commits found');
+            commits = '';
+          }
+
+          // Extract PR numbers from merge commits
+          const prNumbers = [];
+          const prRegex = /#(\d+)/g;
+          let match;
+          while ((match = prRegex.exec(commits)) !== null) {
+            prNumbers.push(match[1]);
+          }
+
+          console.log(`Found ${prNumbers.length} PRs since last tag`);
+
+          // Check which PR numbers are missing from changelog
+          const missingPrNumbers = prNumbers.filter(prNum => !changelog.includes(`#${prNum}`));
+          
+          if (missingPrNumbers.length === 0) {
+            console.log('All PRs are already in the changelog');
+          } else {
+            console.log(`Found ${missingPrNumbers.length} missing PRs, fetching details...`);
+
+            // Get repository info for PR links
+            let repoFullName;
+            try {
+              const remoteUrl = execSync('git config --get remote.origin.url', { encoding: 'utf8' }).trim();
+              const repoMatch = remoteUrl.match(/github\.com[:/](.+?)(?:\.git)?$/);
+              repoFullName = repoMatch ? repoMatch[1] : null;
+            } catch (error) {
+              console.log('Could not determine repository name');
+              repoFullName = null;
+            }
+
+            // Fetch PR details using gh CLI only for missing PRs
+            const missingEntries = [];
+            for (const prNumber of missingPrNumbers) {
+              try {
+                const prJson = execSync(`gh pr view ${prNumber} --json title,author,number`, { encoding: 'utf8' });
+                const pr = JSON.parse(prJson);
+                
+                // Skip dependabot PRs
+                if (pr.author.login.includes('dependabot')) {
+                  console.log(`Skipping dependabot PR #${prNumber}`);
+                  continue;
+                }
+
+                const prUrl = repoFullName ? `https://github.com/${repoFullName}/pull/${pr.number}` : `#${pr.number}`;
+                const entry = `- ${pr.title} ([#${pr.number}](${prUrl})) (by [${pr.author.login}](https://github.com/${pr.author.login}))`;
+                missingEntries.push(entry);
+                console.log(`Added: ${entry}`);
+              } catch (error) {
+                console.log(`Could not fetch details for PR #${prNumber}: ${error.message}`);
+              }
+            }
+            
+            if (missingEntries.length > 0) {
+              console.log(`Adding ${missingEntries.length} missing PR entries to changelog`);
+              
+              // Find the placeholder section and add missing entries
+              const featurePlaceholder = '- _...Add new stuff here..._';
+              if (changelog.includes(featurePlaceholder)) {
+                // Add entries after the features placeholder
+                const entriesText = missingEntries.join('\n');
+                changelog = changelog.replace(
+                  featurePlaceholder,
+                  `${featurePlaceholder}\n${entriesText}`
+                );
+              } else {
+                console.log('Warning: Could not find placeholder to insert PR entries');
+              }
+            }
+          }
+          
+          changelog = changelog.replace('## main', `## ${newVersion}`);
+          changelog = changelog.replaceAll('- _...Add new stuff here..._\n', '');
+          changelog = `## main
+          ### ✨ Features and improvements
+          - _...Add new stuff here..._
+          
+          ### 🐞 Bug fixes
+          - _...Add new stuff here..._
+          
+          ` + changelog;
+          fs.writeFileSync(changelogPath, changelog, 'utf8');
+          console.log(`Changelog updated at ${changelogPath}`);
+
+          // Write outputs to GITHUB_OUTPUT
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${newVersion}\n`);
+          EOF
+      - name: Bump version and update changelog
         id: version-details
         run: |
-          FOLDERS='${{ inputs.package-folders }}'
-          echo "Bumping version in folders:"
-          echo "$FOLDERS"
-          VERSION_PATH="."
-          
-          # Loop through each line (folder)
-          echo "$FOLDERS" | while IFS= read -r folder; do
-            # Skip empty lines
-            [ -z "$folder" ] && continue
-            
-            if [ "$folder" = "." ]; then
-              echo "Bumping version in root package.json"
-              npm version --commit-hooks false --git-tag-version false ${{ inputs.version }}
-            else
-              echo "Bumping version in $folder/package.json"
-              cd "$folder"
-              npm version --commit-hooks false --git-tag-version false ${{ inputs.version }}
-              cd -
-              VERSION_PATH="$folder"
-            fi
-          done
-
-          echo "Using version from path: '$VERSION_PATH'"
-          echo "version-folder=$VERSION_PATH" >> $GITHUB_OUTPUT
-      - name: Update changelog
-        run: |
-          npx auto-changelog --unreleased-only
-      - name: Get version
-        id: package-version
-        uses: martinbeentjes/npm-get-version-action@3cf273023a0dda27efcd3164bdfb51908dd46a5b # v1.3.1
-        with:
-          path: ${{ steps.version-details.outputs.version-folder }}
+          node bump-version.mjs "${{ inputs.version }}" "${{ inputs.package-folders }}" "${{ inputs.changelog-path }}"
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7.0.11
         with:
-          commit-message: Bump js version to ${{ steps.package-version.outputs.current-version }}
-          branch: bump-js-version-to-${{ steps.package-version.outputs.current-version }}
-          title: Bump js version to ${{ steps.package-version.outputs.current-version }}
+          commit-message: Bump js version to ${{ steps.version-details.outputs.version }}
+          branch: bump-js-version-to-${{ steps.version-details.outputs.version }}
+          title: Bump js version to ${{ steps.version-details.outputs.version }}
