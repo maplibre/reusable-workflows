@@ -85,14 +85,14 @@ jobs:
       - name: Publish NPM package (regular)
         if: ${{ !contains(steps.package-version.outputs.current-version, '-') }}
         run: |
-          cd ${{ input.publish-base-dir }}
+          cd ${{ inputs.publish-base-dir }}
           npm publish --access=public
           cd -
 
       - name: Publish NPM package (pre-release)
         if: ${{ contains(steps.package-version.outputs.current-version, '-') }}
         run: |
-          cd ${{ input.publish-base-dir }}
+          cd ${{ inputs.publish-base-dir }}
           npm publish --access=public --tag next
           cd -
 
