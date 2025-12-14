@@ -12,14 +12,10 @@ Once merged, it relays on the following action to do the release.
 
 This action is responsoble for both npm publishing and also publishing the docs to github pages for every release.
 It start by checking if the version of the root package.json to see if it had changed.
-If so, it starts by installing and building the package.
-
-Publishing it to npm.
-
-Creating a git tag.
-
-Creating a GitHub release.
-
-Building the docs.
-
-Publishing the docs to github pages.
+If so, it starts by:
+1. Installing and building the package.
+2. Publishing it to npm.
+3. Creating a git tag.
+4. Creating a GitHub release.
+5. Building the docs.
+6. Publishing the docs to GitHub pages.
