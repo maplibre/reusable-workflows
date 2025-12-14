@@ -10,8 +10,12 @@ on:
     inputs:
       build-command:
         type: string
-        default: npm run build
-        description: The command to build the project for release
+        default: npm ci && npm run build
+        description: The command to build the project for release including packages installation
+      publish-base-dir:
+        type: string
+        default: '.'
+        description: The direction to run npm publish from
       docs-command:
         type: string
         default: npm run docs
@@ -75,27 +79,22 @@ jobs:
         id: package-version
         uses: martinbeentjes/npm-get-version-action@3cf273023a0dda27efcd3164bdfb51908dd46a5b # v1.3.1
 
-      - name: Install
-        run: npm ci
-
-      - name: Prepare release
-        id: prepare_release
-        run: |
-          RELEASE_TYPE=$(node -e "console.log(require('semver').prerelease('${{ steps.package-version.outputs.current-version }}') ? 'prerelease' : 'regular')")
-          echo "release_type=$RELEASE_TYPE" >> $GITHUB_OUTPUT
-
       - name: Build
         run: ${{ inputs.build-command }}
 
       - name: Publish NPM package (regular)
-        if: ${{ steps.prepare_release.outputs.release_type == 'regular' }}
+        if: ${{ !contains(steps.package-version.outputs.current-version, '-') }}
         run: |
+          cd ${{ input.publish-base-dir }}
           npm publish --access=public
+          cd -
 
       - name: Publish NPM package (pre-release)
-        if: ${{ steps.prepare_release.outputs.release_type == 'prerelease' }}
+        if: ${{ contains(steps.package-version.outputs.current-version, '-') }}
         run: |
+          cd ${{ input.publish-base-dir }}
           npm publish --access=public --tag next
+          cd -
 
       - name: Tag commit and push
         id: tag_version
@@ -146,13 +145,13 @@ jobs:
           allowUpdates: false
           immutableCreate: true
           draft: false
-          prerelease: ${{ steps.prepare_release.outputs.release_type == 'prerelease' }}
+          prerelease: ${{ contains(steps.package-version.outputs.current-version, '-') }}
 
       - name: Build the Docs
         run: ${{ inputs.docs-command }}
 
       - name: Publish the docs
-        if: ${{ steps.prepare_release.outputs.release_type == 'regular' }}
+        if: ${{ !contains(steps.package-version.outputs.current-version, '-') }}
         uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e # v4.0.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
