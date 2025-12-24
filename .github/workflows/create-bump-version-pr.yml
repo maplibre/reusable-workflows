@@ -6,6 +6,11 @@ on:
         description: Version bump type.
         required: true
         type: string
+      preid:
+        description: Prerelease identifier (e.g., 'alpha', 'beta', 'rc'). Only used with prerelease version types.
+        required: false
+        type: string
+        default: ''
       package-folders:
         description: |
           Newline-separated list of package folders to bump. Defaults to root only.
@@ -20,6 +25,11 @@ on:
         required: false
         type: string
         default: 'CHANGELOG.md'
+      nvmrc-path:
+        description: Path to the .nvmrc file used by setup-node. Defaults to '.nvmrc'
+        required: false
+        type: string
+        default: '.nvmrc'
 jobs:
   bump-version-pr:
     name: Bump version PR
@@ -35,7 +45,7 @@ jobs:
       - name: Use Node.js from nvmrc
         uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v4
         with:
-          node-version-file: '.nvmrc'
+          node-version-file: "${{ inputs.nvmrc-path }}"
       - name: Create bump script
         run: |
           cat > bump-version.mjs << 'EOF'
@@ -44,8 +54,9 @@ jobs:
           import * as path from 'path';
 
           const versionType = process.argv[2];
-          const folders = process.argv[3];
-          const changelogPath = process.argv[4] || 'CHANGELOG.md';
+          const preid = process.argv[3];
+          const folders = process.argv[4];
+          const changelogPath = process.argv[5] || 'CHANGELOG.md';
 
           console.log('Bumping version in folders:');
           console.log(folders);
@@ -54,15 +65,22 @@ jobs:
           let versionPath = '.';
           let newVersion = '';
 
+          // Build npm version command
+          let versionCmd = `npm version --commit-hooks false --git-tag-version false ${versionType}`;
+          if (preid && preid.trim() !== '') {
+            versionCmd += ` --preid=${preid}`;
+            console.log(`Using preid: ${preid}`);
+          }
+
           for (const folder of folderList) {
             if (folder === '.') {
               console.log('Bumping version in root package.json');
-              execSync(`npm version --commit-hooks false --git-tag-version false ${versionType}`, {
+              execSync(versionCmd, {
                 stdio: 'inherit'
               });
             } else {
               console.log(`Bumping version in ${folder}/package.json`);
-              execSync(`npm version --commit-hooks false --git-tag-version false ${versionType}`, {
+              execSync(versionCmd, {
                 cwd: folder,
                 stdio: 'inherit'
               });
@@ -189,7 +207,7 @@ jobs:
       - name: Bump version and update changelog
         id: version-details
         run: |
-          node bump-version.mjs "${{ inputs.version }}" "${{ inputs.package-folders }}" "${{ inputs.changelog-path }}"
+          node bump-version.mjs "${{ inputs.version }}" "${{ inputs.preid }}" "${{ inputs.package-folders }}" "${{ inputs.changelog-path }}"
           rm bump-version.mjs
         env:
           GH_TOKEN: ${{ github.token }}
