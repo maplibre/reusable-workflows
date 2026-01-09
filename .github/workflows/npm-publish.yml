@@ -12,6 +12,10 @@ on:
         type: string
         default: npm ci && npm run build
         description: The command to build the project for release including packages installation
+      checkout-submodules:
+        type: string
+        default: ''
+        description: Whether to checkout submodules during build, `true` to checkout submodules or `recursive` to recursively checkout submodules
       publish-base-dir:
         type: string
         default: '.'
@@ -68,6 +72,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: main
+          submodules: ${{ inputs.checkout-submodules }}
 
       - name: Use Node.js from nvmrc
         uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v4
