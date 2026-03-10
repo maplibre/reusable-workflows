@@ -172,7 +172,7 @@ jobs:
                 }
 
                 const prUrl = repoFullName ? `https://github.com/${repoFullName}/pull/${pr.number}` : `#${pr.number}`;
-                const entry = `- ${pr.title} ([#${pr.number}](${prUrl})) (by [${pr.author.login}](https://github.com/${pr.author.login}))`;
+                const entry = `- ${pr.title} ([#${pr.number}](${prUrl})) (by [@${pr.author.login}](https://github.com/${pr.author.login}))`;
                 missingEntries.push(entry);
                 console.log(`Added: ${entry}`);
               } catch (error) {
