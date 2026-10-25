@@ -19,3 +19,24 @@ If so, it starts by:
 4. Creating a GitHub release.
 5. Building the docs.
 6. Publishing the docs to GitHub pages.
+
+## lint-pr-title.yml
+
+This action checks that the PR title follows [Conventional Commits](https://www.conventionalcommits.org/) (a type such as `feat:` or `fix:`, then the description), using [action-semantic-pull-request](https://github.com/amannn/action-semantic-pull-request) with its defaults. It skips PRs opened by `github-actions[bot]`, like the one `create-bump-version-pr.yml` opens.
+
+Call it from a workflow triggered by `pull_request_target`, so it also runs on PRs from forks. It checks out no code and needs only `pull-requests: read`:
+
+```yaml
+name: Lint PR title
+
+permissions:
+  pull-requests: read
+
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize]
+
+jobs:
+  lint-pr-title:
+    uses: maplibre/reusable-workflows/.github/workflows/lint-pr-title.yml@main
+```
